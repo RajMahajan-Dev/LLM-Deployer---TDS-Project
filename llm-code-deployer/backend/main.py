@@ -108,6 +108,39 @@ def _slugify(text: str) -> str:
     return text or "project"
 
 
+def _normalize_nonce(nonce: str) -> str:
+    if not nonce:
+        return "default"
+    cleaned = re.sub(r"[^a-z0-9]+", "-", nonce.lower()).strip("-")
+    return cleaned or "nonce"
+
+
+def _task_key(task: str, nonce: str) -> str:
+    return f"{_slugify(task)}::{_normalize_nonce(nonce)}"
+
+
+def _get_existing_task_entry(task: str, nonce: str) -> tuple[str, Optional[Dict[str, Any]]]:
+    key = _task_key(task, nonce)
+    state_snapshot = _load_state()
+    tasks = state_snapshot.get("tasks", {})
+    entry = tasks.get(key)
+    if entry:
+        return key, entry
+
+    legacy_key = _slugify(task)
+    legacy_entry = tasks.get(legacy_key)
+    if not legacy_entry:
+        return key, None
+
+    with STATE_LOCK:
+        state = _load_state()
+        tasks = state.setdefault("tasks", {})
+        migrated = tasks.pop(legacy_key, legacy_entry)
+        tasks[key] = migrated
+        _save_state(state)
+    return key, migrated
+
+
 def _predict_repo_urls(repo_name: str) -> Dict[str, str]:
     if not GITHUB_USERNAME:
         raise RuntimeError("GITHUB_USERNAME is not configured")
@@ -283,12 +316,20 @@ def _wait_for_pages(pages_url: str, timeout_seconds: int = 240, interval_seconds
 
 
 def _process_round_one(req: BuildRequest) -> None:
+    key, existing = _get_existing_task_entry(req.task, req.nonce)
     task_slug = _slugify(req.task)
-    repo_name = f"{task_slug}-{req.nonce[:6].lower()}"
+    nonce_part = _normalize_nonce(req.nonce)[:6]
+    repo_name = existing["repo_name"] if existing and "repo_name" in existing else f"{task_slug}-{nonce_part}"
     logger.info("Round 1 start for task=%s repo=%s", req.task, repo_name)
 
     local_dir = _prepare_local_dir(repo_name, create=True)
-    generated = generate_simple_static_app(req.brief, str(local_dir))
+    generated = generate_simple_static_app(
+        req.brief,
+        str(local_dir),
+        task=req.task,
+        round_number=1,
+        attachments=list(req.attachments or []),
+    )
     if not generated:
         raise RuntimeError("LLM generation failed")
 
@@ -306,7 +347,11 @@ def _process_round_one(req: BuildRequest) -> None:
 
     with STATE_LOCK:
         state = _load_state()
-        state.setdefault("tasks", {})[task_slug] = {
+        tasks = state.setdefault("tasks", {})
+        rounds_completed = set((existing or {}).get("rounds_completed", []))
+        rounds_completed.add(1)
+        tasks[key] = {
+            "task": req.task,
             "repo_name": repo_name,
             "repo_url": repo_info["repo_url"],
             "pages_url": repo_info["pages_url"],
@@ -315,6 +360,7 @@ def _process_round_one(req: BuildRequest) -> None:
             "nonce": req.nonce,
             "evaluation_url": req.evaluation_url,
             "pages_ready": pages_ready,
+            "rounds_completed": sorted(rounds_completed),
         }
         _save_state(state)
 
@@ -322,12 +368,13 @@ def _process_round_one(req: BuildRequest) -> None:
 
 
 def _process_round_two(req: BuildRequest) -> None:
-    task_slug = _slugify(req.task)
-    with STATE_LOCK:
-        state = _load_state()
-        task_state = state.get("tasks", {}).get(task_slug)
+    key, task_state = _get_existing_task_entry(req.task, req.nonce)
     if not task_state:
-        raise RuntimeError(f"No Round 1 state found for task '{req.task}'")
+        raise RuntimeError(f"Round 2 requested before Round 1 for task '{req.task}'")
+
+    completed = set(task_state.get("rounds_completed", []))
+    if 1 not in completed:
+        raise RuntimeError(f"Round 2 requested before Round 1 completed for task '{req.task}'")
 
     repo_name = task_state["repo_name"]
     logger.info("Round 2 start for task=%s repo=%s", req.task, repo_name)
@@ -335,7 +382,13 @@ def _process_round_two(req: BuildRequest) -> None:
     local_dir = _prepare_local_dir(repo_name, create=False)
     _clone_repo(repo_name, local_dir)
 
-    generated = generate_simple_static_app(req.brief, str(local_dir))
+    generated = generate_simple_static_app(
+        req.brief,
+        str(local_dir),
+        task=req.task,
+        round_number=2,
+        attachments=list(req.attachments or []),
+    )
     if not generated:
         raise RuntimeError("LLM generation failed in round 2")
 
@@ -353,12 +406,22 @@ def _process_round_two(req: BuildRequest) -> None:
 
     with STATE_LOCK:
         state = _load_state()
-        state.setdefault("tasks", {})[task_slug] = {
-            **task_state,
-            "pages_url": repo_info["pages_url"],
+        tasks = state.setdefault("tasks", {})
+        existing = tasks.get(key, task_state)
+        rounds_completed = set(existing.get("rounds_completed", []))
+        rounds_completed.update({1, 2})
+        tasks[key] = {
+            **existing,
+            "task": req.task,
+            "repo_name": repo_name,
             "repo_url": repo_info["repo_url"],
+            "pages_url": repo_info["pages_url"],
             "last_commit_sha": repo_info["commit_sha"],
             "pages_ready": pages_ready,
+            "rounds_completed": sorted(rounds_completed),
+            "evaluation_url": req.evaluation_url or existing.get("evaluation_url"),
+            "email": req.email or existing.get("email"),
+            "nonce": req.nonce or existing.get("nonce"),
         }
         _save_state(state)
 
