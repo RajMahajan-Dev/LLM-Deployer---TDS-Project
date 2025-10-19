@@ -1,0 +1,43 @@
+{
+  "tasks": {
+    "captcha-11": {
+      "repo_name": "captcha-11-ab12-1",
+      "repo_url": "https://github.com/RajMahajan-Dev/captcha-11-ab12-1",
+      "pages_url": "https://RajMahajan-Dev.github.io/captcha-11-ab12-1/",
+      "last_commit_sha": "e2922c907fe3f7b7b53dd0eae15718a2a43f2161",
+      "email": "23f1001305@ds.study.iitm.ac.in",
+      "nonce": "ab12-1234",
+      "evaluation_url": "https://example.com/notify"
+    },
+    "time-and-day": {
+      "repo_name": "time-and-day-ab12-1",
+      "repo_url": "https://github.com/RajMahajan-Dev/time-and-day-ab12-1",
+      "pages_url": "https://RajMahajan-Dev.github.io/time-and-day-ab12-1/",
+      "last_commit_sha": "02c092ec367a3104c32bc24501d7ab2d89cbe742",
+      "email": "23f1001305@ds.study.iitm.ac.in",
+      "nonce": "ab12-1234",
+      "evaluation_url": "https://posttestserver.dev/p/cpnbv714t5r58ru8/post",
+      "pages_ready": true
+    },
+    "ccaptcha-solve": {
+      "repo_name": "ccaptcha-solve-rm1121",
+      "repo_url": "https://github.com/RajMahajan-Dev/ccaptcha-solve-rm1121",
+      "pages_url": "https://RajMahajan-Dev.github.io/ccaptcha-solve-rm1121/",
+      "last_commit_sha": "80cd8b115cda5b44c30a6b03f1f0d2ddb338aa85",
+      "email": "23f1001305@ds.study.iitm.ac.in",
+      "nonce": "rm1121-rj",
+      "evaluation_url": "https://posttestserver.dev/p/cpnbv714t5r58ru8/post",
+      "pages_ready": true
+    },
+    "sketch-book": {
+      "repo_name": "sketch-book-rm1522",
+      "repo_url": "https://github.com/RajMahajan-Dev/sketch-book-rm1522",
+      "pages_url": "https://RajMahajan-Dev.github.io/sketch-book-rm1522/",
+      "last_commit_sha": "e908fe6025599796589264d67e90d8c7896534f9",
+      "email": "23f1001305@ds.study.iitm.ac.in",
+      "nonce": "rm15221-rj",
+      "evaluation_url": "https://posttestserver.dev/p/cpnbv714t5r58ru8/post",
+      "pages_ready": true
+    }
+  }
+}
