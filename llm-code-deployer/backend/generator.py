@@ -17,6 +17,7 @@ def generate_simple_static_app(
     task: Optional[str] = None,
     round_number: int = 1,
     attachments: Optional[List[Dict[str, Any]]] = None,
+    previous_html: Optional[str] = None,
 ):
     """
     Generates a simple static app using aipipe.org's LLM API
@@ -36,9 +37,18 @@ def generate_simple_static_app(
     attachments_info = _download_attachments(attachments or [], output_dir)
     attachments_prompt = _build_attachments_prompt(attachments_info)
 
-    round_context = "You are creating the initial version of this project." if round_number == 1 else (
-        "You are updating an existing project. Apply the new requirements while preserving useful structure. Replace outdated content when necessary."
+    round_context = (
+        "You are creating the initial version of this project."
+        if round_number == 1
+        else "You are updating an existing project. Apply the new requirements while preserving useful structure and accessibility. Replace outdated content when necessary."
     )
+
+    previous_html_section = ""
+    if previous_html:
+        trimmed_html = previous_html.strip()
+        if len(trimmed_html) > 6000:
+            trimmed_html = trimmed_html[:6000] + "\n<!-- truncated -->"
+        previous_html_section = "\nExisting implementation (modify as needed, do not duplicate issues):\n" + trimmed_html + "\n"
 
     metadata_lines = [
         f"Task: {task or 'unspecified'}",
@@ -49,9 +59,8 @@ def generate_simple_static_app(
         f"Project brief:\n{brief.strip()}\n\n"
         f"Context:\n- {round_context}\n"
         + "\n".join(f"- {line}" for line in metadata_lines)
-        + (
-            "\n\n" + attachments_prompt if attachments_prompt else ""
-        )
+                + (("\n\n" + attachments_prompt) if attachments_prompt else "")
+                + previous_html_section
         + "\n\nDeliver a single HTML file that:\n"
           "- Starts with <!DOCTYPE html> and includes <html>, <head>, and <body>.\n"
           "- Embeds all CSS inside <style> tags and scripts inside <script> tags.\n"
@@ -110,7 +119,7 @@ def generate_simple_static_app(
         f.write(generated_code)
 
     print(f"✅ App generated successfully in {output_file}")
-    return True
+    return generated_code
 
 
 def _extract_html_from_response(content: str) -> str:

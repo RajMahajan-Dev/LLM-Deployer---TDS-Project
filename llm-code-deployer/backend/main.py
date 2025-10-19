@@ -323,14 +323,15 @@ def _process_round_one(req: BuildRequest) -> None:
     logger.info("Round 1 start for task=%s repo=%s", req.task, repo_name)
 
     local_dir = _prepare_local_dir(repo_name, create=True)
-    generated = generate_simple_static_app(
+    generated_html = generate_simple_static_app(
         req.brief,
         str(local_dir),
         task=req.task,
         round_number=1,
         attachments=list(req.attachments or []),
+        previous_html=None,
     )
-    if not generated:
+    if not generated_html:
         raise RuntimeError("LLM generation failed")
 
     predicted_urls = _predict_repo_urls(repo_name)
@@ -361,6 +362,7 @@ def _process_round_one(req: BuildRequest) -> None:
             "evaluation_url": req.evaluation_url,
             "pages_ready": pages_ready,
             "rounds_completed": sorted(rounds_completed),
+            "last_html": generated_html,
         }
         _save_state(state)
 
@@ -382,14 +384,17 @@ def _process_round_two(req: BuildRequest) -> None:
     local_dir = _prepare_local_dir(repo_name, create=False)
     _clone_repo(repo_name, local_dir)
 
-    generated = generate_simple_static_app(
+    previous_html = task_state.get("last_html")
+
+    generated_html = generate_simple_static_app(
         req.brief,
         str(local_dir),
         task=req.task,
         round_number=2,
         attachments=list(req.attachments or []),
+        previous_html=previous_html,
     )
-    if not generated:
+    if not generated_html:
         raise RuntimeError("LLM generation failed in round 2")
 
     predicted_urls = _predict_repo_urls(repo_name)
@@ -422,6 +427,7 @@ def _process_round_two(req: BuildRequest) -> None:
             "evaluation_url": req.evaluation_url or existing.get("evaluation_url"),
             "email": req.email or existing.get("email"),
             "nonce": req.nonce or existing.get("nonce"),
+            "last_html": generated_html,
         }
         _save_state(state)
 
