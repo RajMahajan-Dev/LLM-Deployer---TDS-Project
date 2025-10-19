@@ -119,6 +119,31 @@ def _task_key(task: str, nonce: str) -> str:
     return f"{_slugify(task)}::{_normalize_nonce(nonce)}"
 
 
+def _ensure_round_allowed(req: BuildRequest) -> None:
+    if req.round <= 1:
+        return
+
+    _, entry = _get_existing_task_entry(req.task, req.nonce)
+    if not entry:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Round 2 requires a successful Round 1 for this task/nonce. "
+                "Please submit the Round 1 request first."
+            ),
+        )
+
+    completed = set(entry.get("rounds_completed", []))
+    if 1 not in completed:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Round 2 requires the latest Round 1 output. Please rerun Round 1 for this task/nonce before "
+                "sending additional Round 2 updates."
+            ),
+        )
+
+
 def _get_existing_task_entry(task: str, nonce: str) -> tuple[str, Optional[Dict[str, Any]]]:
     key = _task_key(task, nonce)
     state_snapshot = _load_state()
@@ -349,8 +374,6 @@ def _process_round_one(req: BuildRequest) -> None:
     with STATE_LOCK:
         state = _load_state()
         tasks = state.setdefault("tasks", {})
-        rounds_completed = set((existing or {}).get("rounds_completed", []))
-        rounds_completed.add(1)
         tasks[key] = {
             "task": req.task,
             "repo_name": repo_name,
@@ -361,8 +384,10 @@ def _process_round_one(req: BuildRequest) -> None:
             "nonce": req.nonce,
             "evaluation_url": req.evaluation_url,
             "pages_ready": pages_ready,
-            "rounds_completed": sorted(rounds_completed),
+            "rounds_completed": [1],
             "last_html": generated_html,
+            "last_round": 1,
+            "last_updated": datetime.utcnow().isoformat() + "Z",
         }
         _save_state(state)
 
@@ -428,6 +453,8 @@ def _process_round_two(req: BuildRequest) -> None:
             "email": req.email or existing.get("email"),
             "nonce": req.nonce or existing.get("nonce"),
             "last_html": generated_html,
+            "last_round": 2,
+            "last_updated": datetime.utcnow().isoformat() + "Z",
         }
         _save_state(state)
 
@@ -451,6 +478,8 @@ def _process_request(payload: Any) -> None:
 async def build(req: BuildRequest, background_tasks: BackgroundTasks):
     if req.secret != STUDENT_SECRET:
         raise HTTPException(status_code=403, detail="Invalid secret")
+
+    _ensure_round_allowed(req)
 
     background_tasks.add_task(_process_request, req.dict())
     return {"status": "accepted", "message": "Processing in background"}
