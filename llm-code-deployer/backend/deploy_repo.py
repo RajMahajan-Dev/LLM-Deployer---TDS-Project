@@ -10,6 +10,13 @@ import certifi
 import requests
 from github import Github
 
+import subprocess
+
+# Configure Git identity for Render automatically
+subprocess.run(["git", "config", "--global", "user.name", "Raj Mahajan"], check=False)
+subprocess.run(["git", "config", "--global", "user.email", "rajmahajan2151.rm@gmail.com"], check=False)
+
+
 logger = logging.getLogger("llm-deployer")
 
 # Clear bad CA bundle environment variables before importing requests
